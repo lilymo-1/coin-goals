@@ -531,6 +531,8 @@ document.addEventListener('click',e=>{
     case 'bk-open':$('#bk-file').click();break;
   }
 });
+document.addEventListener('touchend',()=>{if(S.settings.sound)ac()},{passive:true,capture:true});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&AC&&AC.state!=='running'&&S.settings.sound)AC.resume().catch(()=>{})});
 document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('.item[role=button]')){e.preventDefault();e.target.click()}});
 document.addEventListener('change',e=>{
   const id=e.target.id,st=S.settings;
@@ -639,9 +641,12 @@ function loadPhoto(file){const rd=new FileReader();rd.onload=()=>{const img=new 
 
 /* ---------- sound ---------- */
 let AC=null,master=null,nbuf=null,lastClink=0;
-function ac(){if(!AC){const C=window.AudioContext||window.webkitAudioContext;if(!C)return null;AC=new C();master=AC.createGain();master.gain.value=.9;master.connect(AC.destination);
+function ac(){if(!AC){try{if(navigator.audioSession)navigator.audioSession.type='playback'}catch(e){}
+  const C=window.AudioContext||window.webkitAudioContext;if(!C)return null;AC=new C();
+  // iOS unlock: play one silent sample inside the user's gesture
+  try{const b=AC.createBuffer(1,1,22050),src=AC.createBufferSource();src.buffer=b;src.connect(AC.destination);src.start(0)}catch(e){}master=AC.createGain();master.gain.value=.9;master.connect(AC.destination);
   nbuf=AC.createBuffer(1,AC.sampleRate*.3,AC.sampleRate);const d=nbuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1}
-  if(AC.state==='suspended')AC.resume();return AC}
+  if(AC.state!=='running'&&AC.state!=='closed')AC.resume().catch(()=>{});return AC}
 function tone(f,t0,dur,vol,type){const a=AC,o=a.createOscillator(),g=a.createGain();o.type=type||'sine';o.frequency.value=f;
   g.gain.setValueAtTime(.0001,t0);g.gain.exponentialRampToValueAtTime(vol,t0+.004);g.gain.exponentialRampToValueAtTime(.0001,t0+dur);
   o.connect(g);g.connect(master);o.start(t0);o.stop(t0+dur+.03)}
