@@ -266,6 +266,7 @@ input[type=range]{width:100%;accent-color:var(--gold)}
 
 <script>
 (function(){
+const APP_VERSION='1.6 · 11月5日';
 const HOSTED=!!document.querySelector('meta[name="coin-hosted"]');
 const KEY='coin-goals-v1', BGKEY='coin-goals-bg', TABKEY='coin-goals-tab';
 const $=s=>document.querySelector(s);
@@ -472,7 +473,8 @@ t &gt; T：每分钟金币 × (T + ${st.surcharge} × (t − T))</div>
     <p>· 在 Safari 里打开本页，点分享按钮，选「添加到主屏幕」，就能像 app 一样从桌面打开。</p>
     <p>· 每个任务或奖励右侧的「⋯」可以编辑、移动分区、删除，也能撤销最近的完成记录；分区名右侧的「⋯」可以改名或删除分区。</p></div>
   <div class="card"><h2>重置</h2><p>清空所有任务、奖励、记录和余额，从零开始。设置和背景会保留。</p>
-    <div class="row-btns"><button class="btn small danger" data-act="reset-all">清空全部数据</button></div></div>`;
+    <div class="row-btns"><button class="btn small danger" data-act="reset-all">清空全部数据</button></div></div>
+  <p class="note" style="text-align:center">金币小目标 · 版本 ${APP_VERSION}</p>`;
 }
 
 /* ---------- actions ---------- */
@@ -508,7 +510,7 @@ function tapItem(zone,iid,el){const f=findItem(zone,iid);if(!f)return;const i=f.
 
 document.addEventListener('click',e=>{
   const el=e.target.closest('[data-act]');if(!el)return;
-  if(S.settings.sound)ac();
+  if(S.settings.sound&&!AC)ac();
   const a=el.dataset.act,zone=el.dataset.zone,iid=el.dataset.iid,sid=el.dataset.sid;
   const f=iid&&zone?findItem(zone,iid):null;
   switch(a){
@@ -537,8 +539,12 @@ document.addEventListener('click',e=>{
     case 'bk-open':$('#bk-file').click();break;
   }
 });
-document.addEventListener('touchend',()=>{if(S.settings.sound)ac()},{passive:true,capture:true});
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&AC&&AC.state!=='running'&&S.settings.sound)AC.resume().catch(()=>{})});
+document.addEventListener('touchend',()=>{if(S.settings.sound&&!AC){ac();lastSnd=performance.now()}},{passive:true,capture:true});
+let lastSnd=0;
+function liveAudio(){lastSnd=performance.now();if(AC&&AC.state!=='running'&&AC.state!=='closed')AC.resume().catch(()=>{})}
+/* suspend the engine 1.5 s after the last sound, so iPhone does not show an "audio playing" indicator */
+setInterval(()=>{if(AC&&AC.state==='running'&&performance.now()-lastSnd>1500)AC.suspend().catch(()=>{})},500);
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&AC&&AC.state==='running')AC.suspend().catch(()=>{})});
 document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('.item[role=button]')){e.preventDefault();e.target.click()}});
 document.addEventListener('change',e=>{
   const id=e.target.id,st=S.settings;
@@ -675,16 +681,16 @@ function bgCard(){const sel=S.settings.bg||'default';
   ${sel!=='default'?`<label class="fld"><span>照片遮罩（越高文字越清楚）</span><input type="range" id="set-dim" min="0" max="0.9" step="0.05" value="${S.settings.dim}"></label>`:''}</div>`}
 /* ---------- sound ---------- */
 let AC=null,master=null,nbuf=null,lastClink=0;
-function ac(){if(!AC){try{if(navigator.audioSession)navigator.audioSession.type='playback'}catch(e){}
+function ac(){if(!AC){try{if(navigator.audioSession)navigator.audioSession.type='ambient'}catch(e){}
   const C=window.AudioContext||window.webkitAudioContext;if(!C)return null;AC=new C();
   // iOS unlock: play one silent sample inside the user's gesture
   try{const b=AC.createBuffer(1,1,22050),src=AC.createBufferSource();src.buffer=b;src.connect(AC.destination);src.start(0)}catch(e){}master=AC.createGain();master.gain.value=.9;master.connect(AC.destination);
   nbuf=AC.createBuffer(1,AC.sampleRate*.3,AC.sampleRate);const d=nbuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1}
-  if(AC.state!=='running'&&AC.state!=='closed')AC.resume().catch(()=>{});return AC}
-function tone(f,t0,dur,vol,type){const a=AC,o=a.createOscillator(),g=a.createGain();o.type=type||'sine';o.frequency.value=f;
+  liveAudio();return AC}
+function tone(f,t0,dur,vol,type){liveAudio();const a=AC,o=a.createOscillator(),g=a.createGain();o.type=type||'sine';o.frequency.value=f;
   g.gain.setValueAtTime(.0001,t0);g.gain.exponentialRampToValueAtTime(vol,t0+.004);g.gain.exponentialRampToValueAtTime(.0001,t0+dur);
   o.connect(g);g.connect(master);o.start(t0);o.stop(t0+dur+.03)}
-function noise(t0,dur,vol,freq){const a=AC,s=a.createBufferSource(),bp=a.createBiquadFilter(),g=a.createGain();s.buffer=nbuf;bp.type='bandpass';bp.frequency.value=freq;bp.Q.value=1.2;
+function noise(t0,dur,vol,freq){liveAudio();const a=AC,s=a.createBufferSource(),bp=a.createBiquadFilter(),g=a.createGain();s.buffer=nbuf;bp.type='bandpass';bp.frequency.value=freq;bp.Q.value=1.2;
   g.gain.setValueAtTime(vol,t0);g.gain.exponentialRampToValueAtTime(.0001,t0+dur);s.connect(bp);bp.connect(g);g.connect(master);s.start(t0);s.stop(t0+dur+.02)}
 const canSound=()=>S.settings.sound&&ac();
 function sEarn(){if(!canSound())return;const t=AC.currentTime;tone(1568,t,.3,.05,'triangle');tone(2093,t+.08,.38,.04,'triangle')}
@@ -699,7 +705,7 @@ function ensureRoll(){if(rollG||!AC)return;const len=AC.sampleRate*2,buf=AC.crea
   rollG=AC.createGain();rollG.gain.value=0;src.connect(rollBP);rollBP.connect(rollG);rollG.connect(master);src.start()}
 function rollSound(stop){if(!AC)return;if(!rollG){if(stop||!S.settings.sound)return;ensureRoll()}
   let s=0;if(!stop&&S.settings.sound)for(const b of bodies)if(b.ground&&!b.held)s+=Math.abs(b.w)*b.r;
-  rollG.gain.setTargetAtTime(Math.min(.09,s/9000),AC.currentTime,.06);rollBP.frequency.setTargetAtTime(380+Math.min(1400,s*.25),AC.currentTime,.1)}
+  if(s>30)liveAudio();rollG.gain.setTargetAtTime(Math.min(.09,s/9000),AC.currentTime,.06);rollBP.frequency.setTargetAtTime(380+Math.min(1400,s*.25),AC.currentTime,.1)}
 function sPick(t){if(!canSound())return;const now=AC.currentTime,f=TYPES[t].f;tone(f*1.1,now,.22,.11,'triangle');tone(f*1.66,now+.05,.3,.07,'triangle')}
 function sSpend(){if(!canSound())return;const t=AC.currentTime;
   noise(t,.05,.35,2600);tone(140,t,.12,.3);noise(t+.09,.06,.3,1700);tone(95,t+.09,.14,.28);
@@ -768,10 +774,14 @@ function collectAll(){if(!bodies.length)return;const list=bodies.slice();list.fo
 /* ---- tray persistence (coins stay on screen until tapped) ---- */
 function saveTray(){try{localStorage.setItem(TRAYKEY,JSON.stringify(bodies.map(b=>({t:b.t,x:+(b.x/W).toFixed(4),y:+(b.y/H).toFixed(4),a:+b.a.toFixed(3)}))))}catch(e){}}
 function loadTray(){try{const d=JSON.parse(localStorage.getItem(TRAYKEY)||'[]');if(Array.isArray(d))d.slice(-MAX_TRAY).forEach(o=>{if(TYPES[o.t]){const r=TYPES[o.t].r;bodies.push(mkBody(o.t,Math.min(Math.max(o.x*W,r),W-r),Math.min(Math.max(o.y*H,r),floorY()-r),0,0,o.a||0))}})}catch(e){}updatePill();wake()}
-let sweptN=0;
-document.addEventListener('visibilitychange',()=>{
-  if(document.hidden){if(bodies.length){sweptN=bodies.length;bodies=[];flying=[];sparks=[];texts=[];if(drag)drag=null;cx.clearRect(0,0,W,H);rollSound(true)}saveTray()}
-  else if(sweptN){toast(`已收起 ${sweptN} 枚钱币`);sweptN=0}});
+let sweptN=0,beat=Date.now();
+function sweep(){if(!bodies.length)return;sweptN+=bodies.length;bodies=[];flying=[];sparks=[];texts=[];drag=null;cx.clearRect(0,0,W,H);if(AC&&rollG)rollG.gain.value=0;saveTray()}
+function sweptNote(){if(sweptN&&!document.hidden){toast(`已收起 ${sweptN} 枚钱币`);sweptN=0}}
+document.addEventListener('visibilitychange',()=>{if(document.hidden){sweep();saveTray()}else setTimeout(sweptNote,150)});
+addEventListener('pagehide',sweep);addEventListener('blur',()=>{if(!document.querySelector('input[type=file]:focus'))sweep()});
+addEventListener('focus',()=>setTimeout(sweptNote,150));addEventListener('pageshow',()=>setTimeout(sweptNote,150));
+/* when iPhone freezes the page in the app switcher, timers stop: a long gap means we were away */
+setInterval(()=>{const n=Date.now();if(n-beat>1200){sweep();setTimeout(sweptNote,150)}beat=n},250);
 addEventListener('pagehide',saveTray);
 
 /* ---- rigid-disc contact solver with rolling friction ---- */
@@ -857,7 +867,7 @@ function loop(now){const dt=Math.min(.033,(now-last)/1000)||.016;last=now;
 let drag=null,swallow=0;
 function hitCoin(x,y){for(let i=bodies.length-1;i>=0;i--){const b=bodies[i],dx=x-b.x,dy=y-b.y;if(dx*dx+dy*dy<=b.r*b.r*1.25)return b}return null}
 document.addEventListener('pointerdown',e=>{if(!$('#sheetWrap').hidden||e.target.closest('#trayPill'))return;const b=hitCoin(e.clientX,e.clientY);if(!b)return;
-  e.preventDefault();e.stopPropagation();if(S.settings.sound)ac();const t=performance.now();
+  e.preventDefault();e.stopPropagation();if(S.settings.sound&&!AC)ac();const t=performance.now();
   drag={b,id:e.pointerId,x0:e.clientX,y0:e.clientY,t0:t,lx:e.clientX,ly:e.clientY,lt:t,moved:false,ox:b.x-e.clientX,oy:b.y-e.clientY};
   rouse(b);b.held=true;b.vx=b.vy=0;swallow=Date.now()+700;wake()},true);
 document.addEventListener('pointermove',e=>{if(!drag||e.pointerId!==drag.id)return;const t=performance.now(),b=drag.b;
@@ -952,7 +962,7 @@ async function restoreCloud(){if(!cloudRef)return;try{const snap=await cloudRef.
   const d=JSON.parse(snap.data().json);if(!valid(d)){toast('云端备份读不了');return}
   d.settings={...DEF_SET,...(d.settings||{})};d.log=d.log||[];S=d;localSave();shownBal=S.balance;setBal(S.balance);render();toast('已从云端恢复')}
   catch(e){toast('暂时连不上云端，稍后再试')}}
-async function saveFile(){const d=new Date(),name=`金币小目标备份-${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}.json`;
+async function saveFile(){const d=new Date(),p2=n=>String(n).padStart(2,'0'),name=`金币小目标备份 ${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())} ${p2(d.getHours())}${p2(d.getMinutes())}.json`;
   if(HOSTED){const json=JSON.stringify({...S,bgs:BGS}),blob=new Blob([json],{type:'application/json'});
     try{const file=new File([blob],name,{type:'application/json'});
       if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:name})}
